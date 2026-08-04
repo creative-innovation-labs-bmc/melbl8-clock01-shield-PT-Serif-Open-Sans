@@ -1,0 +1,187 @@
+name: Bootstrap production clock
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".bootstrap-trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy the Shield source build
+        run: |
+          curl --fail --location --retry 4 --output index.html https://raw.githubusercontent.com/creative-innovation-labs-bmc/melbl8-clock01-shield/main/index.html
+          curl --fail --location --retry 4 --output style.css https://raw.githubusercontent.com/creative-innovation-labs-bmc/melbl8-clock01-shield/main/style.css
+          curl --fail --location --retry 4 --output sketch.js https://raw.githubusercontent.com/creative-innovation-labs-bmc/melbl8-clock01-shield/main/sketch.js
+
+      - name: Download official font files
+        run: |
+          mkdir -p assets/fonts
+          curl --fail --location --retry 4 --output assets/fonts/OpenSans-Bold.ttf https://raw.githubusercontent.com/googlefonts/opensans/main/fonts/ttf/OpenSans-Bold.ttf
+          curl --fail --location --retry 4 --output assets/fonts/OpenSans-Semibold.ttf https://raw.githubusercontent.com/googlefonts/opensans/main/fonts/ttf/OpenSans-SemiBold.ttf
+          curl --fail --location --retry 4 --output assets/fonts/PTSerif-Bold.ttf https://raw.githubusercontent.com/google/fonts/main/ofl/ptserif/PT_Serif-Web-Bold.ttf
+          curl --fail --location --retry 4 --output assets/fonts/OpenSans-OFL.txt https://raw.githubusercontent.com/googlefonts/opensans/main/OFL.txt
+          curl --fail --location --retry 4 --output assets/fonts/PTSerif-OFL.txt https://raw.githubusercontent.com/google/fonts/main/ofl/ptserif/OFL.txt
+
+      - name: Apply the Aurecon web font build
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          build = "20260805a"
+
+          index = Path("index.html").read_text(encoding="utf-8")
+          index = index.replace('<html lang="en">', '<html lang="en-AU">')
+          index = index.replace('content="width=device-width, initial-scale=1.0"', 'content="width=device-width, initial-scale=1, viewport-fit=cover"')
+          index = index.replace('    <link rel="stylesheet" href="style.css">', '''    <meta name="theme-color" content="#1C1B1C">
+    <link rel="preload" href="assets/fonts/OpenSans-Bold.ttf?v=20260805a" as="font" type="font/ttf" crossorigin>
+    <link rel="preload" href="assets/fonts/OpenSans-Semibold.ttf?v=20260805a" as="font" type="font/ttf" crossorigin>
+    <link rel="preload" href="assets/fonts/PTSerif-Bold.ttf?v=20260805a" as="font" type="font/ttf" crossorigin>
+    <link rel="stylesheet" href="style.css?v=20260805a">''')
+          index = index.replace('<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>', '''<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js" integrity="sha512-uaz5GpnQoE6t5echKlX8P52czvsIGgLPcvlzfvRubLZ1Hp8JemUDnbUiAahbVtPb+jUVrNETuXvAhDDF/N3M4w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>''')
+          index = index.replace('<script src="sketch.js"></script>', '<script src="sketch.js?v=20260805a"></script>')
+          Path("index.html").write_text(index, encoding="utf-8")
+
+          js = Path("sketch.js").read_text(encoding="utf-8")
+          replacements = {
+              "mainFont = loadFont('MP-B.ttf');": "mainFont = loadFont('assets/fonts/OpenSans-Bold.ttf?v=20260805a');",
+              "footerFont = loadFont('MS-Bk.otf');": "footerFont = loadFont('assets/fonts/PTSerif-Bold.ttf?v=20260805a');",
+              "sidebarFont = loadFont('MP-M.ttf');": "sidebarFont = loadFont('assets/fonts/OpenSans-Semibold.ttf?v=20260805a');",
+              "t.textSize(scaled(750) * 0.5);": "t.textSize(scaled(372));",
+              "  canvas.parent('stage');\n\n  buildDigitPointCache();": "  canvas.parent('stage');\n  fitStageToViewport();\n\n  buildDigitPointCache();",
+              "function windowResized() {\n  // Keep the canvas locked to the signage resolution. CSS handles centring.\n  resizeCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);\n}": "function windowResized() {\n  fitStageToViewport();\n}\n\nfunction fitStageToViewport() {\n  const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || CANVAS_WIDTH);\n  const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || CANVAS_HEIGHT);\n  const stageScale = Math.min(1, viewportWidth / CANVAS_WIDTH, viewportHeight / CANVAS_HEIGHT);\n  document.documentElement.style.setProperty('--stage-scale', stageScale.toFixed(6));\n}",
+              "  setTimeout(fetchLocation, 120000);": "  window.setTimeout(fetchLocation, 120000);",
+              "    textSize(scaled(24));\n    text(sidebarText, 0, 0);": "    let sidebarSize = scaled(24);\n    const availableLength = height - scaled(100);\n    const measuredLength = Math.max(1, textWidth(sidebarText));\n    if (measuredLength > availableLength) sidebarSize *= availableLength / measuredLength;\n    textSize(sidebarSize);\n    text(sidebarText, 0, 0);"
+          }
+          for old, new in replacements.items():
+              if old not in js:
+                  raise SystemExit(f"Source pattern not found: {old[:80]}")
+              js = js.replace(old, new)
+          Path("sketch.js").write_text(js, encoding="utf-8")
+
+          css = ''':root {
+            --stage-width: 3840px;
+            --stage-height: 804px;
+            --stage-scale: 1;
+            --background-colour: #1C1B1C;
+          }
+          * { box-sizing: border-box; }
+          html, body {
+            width: 100%; height: 100%; margin: 0; padding: 0;
+            overflow: hidden; background: var(--background-colour);
+          }
+          body { position: relative; min-width: 100vw; min-height: 100vh; }
+          #stage {
+            position: absolute; left: 50%; top: 50%;
+            width: var(--stage-width); height: var(--stage-height);
+            overflow: hidden; background: var(--background-colour);
+            contain: layout paint size style;
+            transform: translate(-50%, -50%) scale(var(--stage-scale));
+            transform-origin: center center;
+          }
+          #stage canvas, canvas {
+            display: block;
+            width: var(--stage-width) !important;
+            height: var(--stage-height) !important;
+          }
+          '''
+          Path("style.css").write_text(css, encoding="utf-8")
+
+          Path("robots.txt").write_text("User-agent: *\nDisallow: /\n", encoding="utf-8")
+          Path(".nojekyll").write_text("", encoding="utf-8")
+          Path(".gitignore").write_text(".DS_Store\nThumbs.db\n", encoding="utf-8")
+          Path("AGENTS.md").write_text("# Working rules\n\n- Preserve the fixed 3840 × 804 composition.\n- Preserve NVIDIA Shield and Enplug performance constraints.\n- Keep font assets local.\n- Keep the page excluded from normal search indexing.\n- Update the cache version when production assets change.\n", encoding="utf-8")
+          Path("PROJECT_BRIEF.md").write_text("# Project brief\n\nA separate version of `melbl8-clock01-shield` using locally hosted PT Serif and Open Sans while preserving its visual layout and NVIDIA Shield performance profile.\n", encoding="utf-8")
+          Path("README.md").write_text('''# melbl8-clock01 Shield, PT Serif and Open Sans
+
+A separate 3840 × 804 build of the meditative particle clock for NVIDIA Shield and Enplug signage playback.
+
+## Font replacement
+
+| Original role | Replacement | Local file |
+|---|---|---|
+| MetaPro Bold, particle digits | Open Sans Bold | `assets/fonts/OpenSans-Bold.ttf` |
+| MetaSerif Black, footer clock | PT Serif Bold | `assets/fonts/PTSerif-Bold.ttf` |
+| MetaPro Medium, vertical metadata | Open Sans Semibold | `assets/fonts/OpenSans-Semibold.ttf` |
+
+The production clock does not request fonts from Google Fonts at runtime. Official font binaries and SIL Open Font License notices are committed under `assets/fonts/`.
+
+## Shield profile
+
+- Native canvas: 3840 × 804
+- Pixel density: 1
+- Frame-rate cap: 30 fps
+- 900 particles per zone, 3,600 total
+- Cached digit masks, with no per-frame offscreen canvas generation
+- CSS-only viewport scaling for mobile testing
+- Slow, non-blocking location retry
+
+Open Sans is slightly broader than the original MetaPro digit font. The digit mask is set to 372 px rather than 375 px so every numeral stays inside the existing 900-particle budget without raising Shield load.
+
+## Production
+
+https://creative-innovation-labs-bmc.github.io/melbl8-clock01-shield-PT-Serif-Open-Sans/
+
+The page uses `noindex`, `nofollow`, `noarchive`, `nosnippet`, and `robots.txt`. It is undiscoverable to normal search indexing, but GitHub Pages remains a public URL rather than an access-controlled site.
+
+Build cache version: `20260805a`.
+''', encoding="utf-8")
+          PY
+          rm -f app.js styles.css .factory-complete MP-B.ttf MP-M.ttf MS-Bk.otf
+
+      - name: Validate the Shield build
+        run: |
+          node --check sketch.js
+          python3 - <<'PY'
+          from pathlib import Path
+          required = [
+            "index.html", "style.css", "sketch.js", "robots.txt", ".nojekyll",
+            "assets/fonts/OpenSans-Bold.ttf", "assets/fonts/OpenSans-Semibold.ttf",
+            "assets/fonts/PTSerif-Bold.ttf", "assets/fonts/OpenSans-OFL.txt",
+            "assets/fonts/PTSerif-OFL.txt"
+          ]
+          missing = [p for p in required if not Path(p).is_file()]
+          if missing: raise SystemExit(f"Missing files: {missing}")
+          minimums = {
+            "assets/fonts/OpenSans-Bold.ttf": 150000,
+            "assets/fonts/OpenSans-Semibold.ttf": 150000,
+            "assets/fonts/PTSerif-Bold.ttf": 250000,
+          }
+          for path, minimum in minimums.items():
+            if Path(path).stat().st_size < minimum:
+              raise SystemExit(f"Unexpected font file size: {path}")
+          html = Path("index.html").read_text()
+          css = Path("style.css").read_text()
+          js = Path("sketch.js").read_text()
+          checks = [
+            "noindex, nofollow, noarchive, nosnippet" in html,
+            "--stage-width: 3840px" in css,
+            "--stage-height: 804px" in css,
+            "const PARTICLES_PER_ZONE = 900;" in js,
+            "const TARGET_FPS = 30;" in js,
+            "pixelDensity(1);" in js,
+            "assets/fonts/OpenSans-Bold.ttf" in js,
+            "assets/fonts/PTSerif-Bold.ttf" in js,
+            "assets/fonts/OpenSans-Semibold.ttf" in js,
+          ]
+          if not all(checks): raise SystemExit("One or more Shield checks failed")
+          print("Shield build validation passed")
+          PY
+
+      - name: Commit production build
+        run: |
+          rm -f .github/workflows/bootstrap.yml
+          printf 'Production bootstrap completed for build 20260805a.\n' > .bootstrap-complete
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Build PT Serif and Open Sans Shield clock"
+          git push
