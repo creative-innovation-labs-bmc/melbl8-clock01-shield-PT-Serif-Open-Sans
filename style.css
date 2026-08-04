@@ -1,0 +1,44 @@
+:root {
+  --stage-width: 3840px;
+  --stage-height: 804px;
+  --stage-scale: 1;
+  --background-colour: #1C1B1C;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--background-colour);
+}
+
+body {
+  position: relative;
+  min-width: 100vw;
+  min-height: 100vh;
+}
+
+#stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--stage-width);
+  height: var(--stage-height);
+  overflow: hidden;
+  background: var(--background-colour);
+  contain: layout paint size style;
+  transform: translate(-50%, -50%) scale(var(--stage-scale));
+  transform-origin: center center;
+}
+
+#stage canvas,
+canvas {
+  display: block;
+  width: var(--stage-width) !important;
+  height: var(--stage-height) !important;
+}

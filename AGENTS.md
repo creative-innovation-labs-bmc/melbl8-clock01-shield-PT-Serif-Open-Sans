@@ -1,7 +1,7 @@
 # Working rules
 
-- Read `PROJECT_BRIEF.md` before changing the project.
-- Use Australian English for user-facing copy.
-- Do not commit credentials or tokens.
-- Run relevant checks before committing.
-- Keep setup and usage documented in `README.md`.
+- Preserve the fixed 3840 x 804 composition.
+- Preserve NVIDIA Shield and Enplug performance constraints.
+- Keep font assets local.
+- Keep the page excluded from normal search indexing.
+- Update the cache version when production assets change.
