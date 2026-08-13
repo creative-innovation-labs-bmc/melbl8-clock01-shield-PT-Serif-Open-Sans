@@ -6,13 +6,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -23,37 +23,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Ensure pinned p5.js is vendored locally
+      - name: Verify repository-hosted p5.js
         shell: bash
         env:
           EXPECTED_SHA512: uaz5GpnQoE6t5echKlX8P52czvsIGgLPcvlzfvRubLZ1Hp8JemUDnbUiAahbVtPb+jUVrNETuXvAhDDF/N3M4w==
         run: |
           set -euo pipefail
-          mkdir -p vendor
-
-          valid=0
-          if [[ -s vendor/p5.min.js ]]; then
-            actual="$(openssl dgst -sha512 -binary vendor/p5.min.js | openssl base64 -A)"
-            if [[ "$actual" == "$EXPECTED_SHA512" ]]; then
-              valid=1
-            fi
-          fi
-
-          if [[ "$valid" -ne 1 ]]; then
-            curl --fail --location --retry 3 \
-              "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js" \
-              --output vendor/p5.min.js
-
-            test "$(stat -c%s vendor/p5.min.js)" -gt 900000
-            actual="$(openssl dgst -sha512 -binary vendor/p5.min.js | openssl base64 -A)"
-            test "$actual" = "$EXPECTED_SHA512"
-
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add vendor/p5.min.js
-            git commit -m "Vendor pinned p5.js 1.9.0 runtime"
-            git push
-          fi
+          test "$(stat -c%s vendor/p5.min.js)" -gt 900000
+          actual="$(openssl dgst -sha512 -binary vendor/p5.min.js | openssl base64 -A)"
+          test "$actual" = "$EXPECTED_SHA512"
+          grep -F 'vendor/p5.min.js?v=1.9.0' index.html
+          ! grep -F 'cdnjs.cloudflare.com/ajax/libs/p5.js' index.html
 
       - uses: actions/configure-pages@v5
 
