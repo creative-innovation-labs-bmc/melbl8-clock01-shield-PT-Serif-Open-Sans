@@ -6,13 +6,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -22,9 +22,61 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Ensure pinned p5.js is vendored locally
+        shell: bash
+        env:
+          EXPECTED_SHA512: uaz5GpnQoE6t5echKlX8P52czvsIGgLPcvlzfvRubLZ1Hp8JemUDnbUiAahbVtPb+jUVrNETuXvAhDDF/N3M4w==
+        run: |
+          set -euo pipefail
+          mkdir -p vendor
+
+          valid=0
+          if [[ -s vendor/p5.min.js ]]; then
+            actual="$(openssl dgst -sha512 -binary vendor/p5.min.js | openssl base64 -A)"
+            if [[ "$actual" == "$EXPECTED_SHA512" ]]; then
+              valid=1
+            fi
+          fi
+
+          if [[ "$valid" -ne 1 ]]; then
+            curl --fail --location --retry 3 \
+              "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js" \
+              --output vendor/p5.min.js
+
+            test "$(stat -c%s vendor/p5.min.js)" -gt 900000
+            actual="$(openssl dgst -sha512 -binary vendor/p5.min.js | openssl base64 -A)"
+            test "$actual" = "$EXPECTED_SHA512"
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add vendor/p5.min.js
+            git commit -m "Vendor pinned p5.js 1.9.0 runtime"
+            git push
+          fi
+
       - uses: actions/configure-pages@v5
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
+
       - id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify live page uses local p5.js
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          EXPECTED_SHA512: uaz5GpnQoE6t5echKlX8P52czvsIGgLPcvlzfvRubLZ1Hp8JemUDnbUiAahbVtPb+jUVrNETuXvAhDDF/N3M4w==
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 8 --retry-delay 3 \
+            "$PAGE_URL" -o /tmp/index.html
+          grep -F 'vendor/p5.min.js?v=1.9.0' /tmp/index.html
+          ! grep -F 'cdnjs.cloudflare.com/ajax/libs/p5.js' /tmp/index.html
+
+          curl --fail --silent --show-error --location --retry 8 --retry-delay 3 \
+            "${PAGE_URL%/}/vendor/p5.min.js" -o /tmp/p5.min.js
+          test "$(stat -c%s /tmp/p5.min.js)" -gt 900000
+          actual="$(openssl dgst -sha512 -binary /tmp/p5.min.js | openssl base64 -A)"
+          test "$actual" = "$EXPECTED_SHA512"
